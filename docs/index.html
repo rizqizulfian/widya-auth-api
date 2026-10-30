@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Widya Auth API - Dokumentasi</title>
+<style>
+:root{--bg:#fff;--fg:#1c2430;--mut:#5b6677;--card:#f5f7fa;--line:#dde3ea;--acc:#1769aa;--code:#0f1720;--codefg:#e6edf3}
+@media (prefers-color-scheme:dark){:root{--bg:#10151c;--fg:#e4e9ef;--mut:#9aa6b5;--card:#18202a;--line:#2a3441;--acc:#6cb6ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 system-ui,-apple-system,Segoe UI,sans-serif}
+.wrap{max-width:900px;margin:0 auto;padding:0 16px 64px}
+header{padding:48px 0 24px;border-bottom:1px solid var(--line)}
+h1{margin:0 0 8px;font-size:2rem}h2{margin-top:48px;padding-top:8px;border-top:1px solid var(--line)}
+nav{display:flex;flex-wrap:wrap;gap:8px 16px;margin:16px 0}nav a{color:var(--acc);text-decoration:none}
+p.lead{color:var(--mut);margin:0}
+pre{background:var(--code);color:var(--codefg);padding:14px 16px;border-radius:8px;overflow-x:auto;font-size:.87rem;line-height:1.5}
+code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
+:not(pre)>code{background:var(--card);padding:1px 6px;border-radius:4px}
+table{border-collapse:collapse;width:100%;font-size:.93rem;display:block;overflow-x:auto}
+th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}th{background:var(--card)}
+.ep{border:1px solid var(--line);border-radius:10px;margin:20px 0;overflow:hidden}
+.ep h3{margin:0;padding:12px 16px;background:var(--card);display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:1rem}
+.ep .body{padding:4px 16px 16px}
+.m{font:700 .75rem ui-monospace,monospace;color:#fff;padding:3px 8px;border-radius:4px}
+.post{background:#1a8a4a}.get{background:#1769aa}
+.note{border-left:4px solid var(--acc);background:var(--card);padding:10px 14px;border-radius:0 8px 8px 0}
+pre.diagram{background:var(--card);color:var(--fg);border:1px solid var(--line)}
+</style>
+</head>
+<body><div class="wrap">
+<header>
+<h1>Widya Auth API</h1>
+<p class="lead">REST API portal autentikasi: buat akun, login, dan akses profile dengan JWT. Knowledge Test Software Engineer - PT Widya Informasi Nusantara.</p>
+<nav><a href="#overview">Ringkasan</a><a href="#setup">Menjalankan</a><a href="#arsitektur">Arsitektur</a><a href="#endpoint">Endpoint</a><a href="#data">Data &amp; keamanan</a><a href="#asumsi">Asumsi</a><a href="#testing">Testing</a><a href="#lanjut">Pengembangan lanjut</a></nav>
+</header>
+
+<h2 id="overview">1. Ringkasan</h2>
+<p>Semua orang dapat membuat akun (nama, email, jenis kelamin), login, lalu mengakses profile mereka sendiri dengan header token JWT. Semua response berbentuk JSON.</p>
+<table>
+<tr><th>Aspek</th><th>Pilihan</th></tr>
+<tr><td>Runtime</td><td>Node.js 18+</td></tr>
+<tr><td>Framework</td><td>Express 4</td></tr>
+<tr><td>Database</td><td>PostgreSQL (driver <code>pg</code>, query terparameter)</td></tr>
+<tr><td>Autentikasi</td><td>JWT (<code>jsonwebtoken</code>), password di-hash bcrypt (<code>bcryptjs</code>)</td></tr>
+<tr><td>Dokumentasi</td><td>Halaman ini + Swagger UI di <code>/docs</code></td></tr>
+<tr><td>Test</td><td>Integration test dengan <code>node:test</code> bawaan Node</td></tr>
+</table>
+
+<h2 id="setup">2. Menjalankan di lokal</h2>
+<pre>npm install
+cp .env.example .env     # isi DATABASE_URL dan JWT_SECRET
+docker compose up -d     # opsional: PostgreSQL via Docker
+npm run migrate          # membuat tabel users
+npm start                # http://localhost:3000</pre>
+<table>
+<tr><th>Variabel</th><th>Wajib</th><th>Keterangan</th></tr>
+<tr><td><code>DATABASE_URL</code></td><td>ya</td><td>Mis. <code>postgres://postgres:postgres@localhost:5432/widya_auth</code></td></tr>
+<tr><td><code>JWT_SECRET</code></td><td>ya</td><td>String acak panjang. Aplikasi gagal start bila kosong.</td></tr>
+<tr><td><code>JWT_EXPIRES_IN</code></td><td>tidak</td><td>Masa berlaku token, default <code>1h</code></td></tr>
+<tr><td><code>PORT</code></td><td>tidak</td><td>Default <code>3000</code></td></tr>
+</table>
+
+<h2 id="arsitektur">3. Arsitektur</h2>
+<p>Arsitektur berlapis dengan tanggung jawab yang jelas, sehingga tiap lapisan mudah dites dan diganti.</p>
+<pre class="diagram">Request
+  |
+  v
+routes/            memetakan URL ke handler
+  |
+  v
+middleware/        validate.js (input) -> auth.js (verifikasi JWT)
+  |
+  v
+controllers/       lapisan HTTP: baca request, tulis response, buat token
+  |
+  v
+services/          logika bisnis + query SQL (userService)
+  |
+  v
+db/pool.js         koneksi PostgreSQL
+
+errorHandler.js    satu tempat untuk semua format error</pre>
+<table>
+<tr><th>Path</th><th>Peran</th></tr>
+<tr><td><code>src/app.js</code></td><td>Menyusun aplikasi Express. Dipisah dari <code>server.js</code> agar bisa dites tanpa membuka port tetap.</td></tr>
+<tr><td><code>src/server.js</code></td><td>Entry point: <code>listen</code> saja.</td></tr>
+<tr><td><code>src/config/</code></td><td>Membaca env dan gagal cepat bila konfigurasi wajib hilang.</td></tr>
+<tr><td><code>src/db/</code></td><td>Pool koneksi, <code>schema.sql</code>, dan skrip migrasi.</td></tr>
+<tr><td><code>src/errors.js</code></td><td><code>HttpError</code>: error dengan status code, dilempar dari mana saja.</td></tr>
+<tr><td><code>src/openapi.js</code></td><td>Spesifikasi OpenAPI untuk Swagger UI.</td></tr>
+<tr><td><code>tests/</code></td><td>Integration test end-to-end.</td></tr>
+</table>
+
+<h2 id="endpoint">4. Endpoint</h2>
+<p>Base URL: <code>http://localhost:3000</code></p>
+
+<div class="ep"><h3><span class="m post">POST</span><code>/api/auth/register</code> Buat akun baru</h3><div class="body">
+<table><tr><th>Field</th><th>Aturan</th></tr>
+<tr><td><code>name</code></td><td>wajib, maks 100 karakter</td></tr>
+<tr><td><code>email</code></td><td>wajib, format valid, unik (disimpan lowercase)</td></tr>
+<tr><td><code>gender</code></td><td>wajib: <code>male</code> atau <code>female</code></td></tr>
+<tr><td><code>password</code></td><td>wajib, 8-72 karakter</td></tr></table>
+<pre>curl -X POST localhost:3000/api/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Budi Santoso","email":"budi@example.com","gender":"male","password":"rahasia123"}'</pre>
+<p>201 Created</p>
+<pre>{
+  "success": true,
+  "message": "Akun berhasil dibuat",
+  "data": { "id": 1, "name": "Budi Santoso", "email": "budi@example.com",
+            "gender": "male", "created_at": "2026-10-30T16:24:37.084Z" }
+}</pre>
+<p>400 Validasi gagal, 409 Email sudah terdaftar. Contoh 400:</p>
+<pre>{ "success": false, "message": "Validasi gagal",
+  "errors": { "email": "email tidak valid", "password": "password 8-72 karakter" } }</pre>
+</div></div>
+
+<div class="ep"><h3><span class="m post">POST</span><code>/api/auth/login</code> Login dan dapatkan JWT</h3><div class="body">
+<pre>curl -X POST localhost:3000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"budi@example.com","password":"rahasia123"}'</pre>
+<p>200 OK</p>
+<pre>{
+  "success": true,
+  "message": "Login berhasil",
+  "data": { "token": "eyJhbGciOi...", "tokenType": "Bearer", "expiresIn": "1h" }
+}</pre>
+<p>401 bila email atau password salah (pesan sengaja sama: <code>Email atau password salah</code>).</p>
+</div></div>
+
+<div class="ep"><h3><span class="m get">GET</span><code>/api/profile</code> Profile user yang login</h3><div class="body">
+<pre>curl localhost:3000/api/profile -H 'Authorization: Bearer &lt;token&gt;'</pre>
+<p>200 OK</p>
+<pre>{ "success": true,
+  "data": { "id": 1, "name": "Budi Santoso", "email": "budi@example.com",
+            "gender": "male", "created_at": "2026-10-30T16:24:37.084Z" } }</pre>
+<p>401 bila header hilang, token tidak valid, atau kedaluwarsa.</p>
+</div></div>
+
+<p>Endpoint pendukung: <code>GET /health</code> (health check) dan <code>GET /docs</code> (Swagger UI interaktif).</p>
+<table>
+<tr><th>Status</th><th>Arti</th></tr>
+<tr><td>200 / 201</td><td>Berhasil / akun dibuat</td></tr>
+<tr><td>400</td><td>Validasi gagal atau body bukan JSON valid</td></tr>
+<tr><td>401</td><td>Kredensial atau token salah</td></tr>
+<tr><td>404</td><td>Endpoint atau user tidak ditemukan</td></tr>
+<tr><td>409</td><td>Email sudah terdaftar</td></tr>
+<tr><td>500</td><td>Kesalahan server (detail hanya di log, tidak dikirim ke klien)</td></tr>
+</table>
+
+<h2 id="data">5. Data dan keamanan</h2>
+<pre>CREATE TABLE users (
+  id            SERIAL PRIMARY KEY,
+  name          VARCHAR(100) NOT NULL,
+  email         VARCHAR(255) NOT NULL UNIQUE,
+  gender        VARCHAR(10)  NOT NULL CHECK (gender IN ('male','female')),
+  password_hash VARCHAR(100) NOT NULL,
+  created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);</pre>
+<ul>
+<li>Password di-hash bcrypt dan tidak pernah muncul di response.</li>
+<li>Semua query memakai parameter (<code>$1, $2</code>) sehingga aman dari SQL injection.</li>
+<li>Duplikat email ditangkap dari unique constraint (kode <code>23505</code>), bukan cek-lalu-insert, jadi bebas race condition.</li>
+<li>JWT berisi <code>sub</code> (id user), ditandatangani <code>JWT_SECRET</code>, kedaluwarsa sesuai <code>JWT_EXPIRES_IN</code>.</li>
+<li>Pesan error login sama untuk email dan password salah agar akun tidak bisa ditebak.</li>
+<li>Ukuran body dibatasi 10 KB. <code>.env</code> tidak pernah di-commit.</li>
+</ul>
+
+<h2 id="asumsi">6. Asumsi desain</h2>
+<div class="note">Soal hanya menyebut nama, email, dan jenis kelamin. Karena login butuh kredensial, saya menambahkan <code>password</code>.</div>
+<ul>
+<li>Login memakai email dan password.</li>
+<li>Gender dibatasi <code>male</code> dan <code>female</code>, dijaga di validasi dan di database.</li>
+<li>Profile hanya bisa dilihat oleh pemilik token (tidak ada parameter id, sehingga tidak ada akses silang antar user).</li>
+<li>Skema dibuat lewat satu skrip migrasi idempoten (<code>CREATE TABLE IF NOT EXISTS</code>) agar setup cukup satu perintah.</li>
+</ul>
+
+<h2 id="testing">7. Testing</h2>
+<pre>npm run migrate
+npm test</pre>
+<p>Test berjalan end-to-end terhadap PostgreSQL asli dan membersihkan datanya sendiri. Skenario yang dicakup:</p>
+<ul>
+<li>register, login, lalu profile (alur utama), dan password tidak bocor</li>
+<li>email duplikat menghasilkan 409</li>
+<li>validasi input menghasilkan 400 dengan detail per field</li>
+<li>password salah menghasilkan 401</li>
+<li>profile tanpa token atau dengan token palsu menghasilkan 401</li>
+</ul>
+
+<h2 id="lanjut">8. Pengembangan lanjutan</h2>
+<p>Belum dikerjakan: rate limiting login, refresh token, verifikasi email, migrasi berversi (mis. knex), dan deploy ke Heroku atau VPS.</p>
+</div></body></html>
