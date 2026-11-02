@@ -8,7 +8,7 @@ REST API portal autentikasi: buat akun, login, dan akses profile memakai JWT. Di
 
 ```bash
 npm install
-cp .env.example .env          # sesuaikan DATABASE_URL & JWT_SECRET
+# .env sudah disertakan (lihat bagian Environment)
 docker compose up -d          # opsional: PostgreSQL via Docker
 npm run migrate               # membuat tabel users
 npm start                     # http://localhost:3000
@@ -16,6 +16,18 @@ npm test                      # integration test (butuh database termigrasi)
 ```
 
 Dokumentasi interaktif (Swagger UI): `http://localhost:3000/docs`
+
+## Environment (`.env` sengaja disertakan)
+
+File `.env` **sengaja disertakan di repo/zip ini agar reviewer bisa langsung menjalankan aplikasi** tanpa setup tambahan. Kami tahu file `.env` normalnya tidak boleh di-commit; semua nilai di dalamnya hanya untuk development lokal / review dan **bukan nilai production**. Di Heroku, nilai sebenarnya diset lewat Config Vars (JWT_SECRET berbeda).
+
+| Variabel | Nilai di `.env` | Keterangan |
+|---|---|---|
+| `PORT` | `3000` | Port HTTP server (Heroku mengisinya otomatis) |
+| `DATABASE_URL` | `postgres://postgres:postgres@localhost:5432/widya_auth` | Koneksi PostgreSQL; cocok dengan `docker-compose.yml` |
+| `JWT_SECRET` | `dev-only-secret-widya-review-not-for-production` | Secret penanda tangan JWT (nilai dummy) |
+| `JWT_EXPIRES_IN` | `1h` | Masa berlaku token |
+| `DATABASE_SSL` | (tidak diset) | Set `true` jika DB mewajibkan TLS (mis. Heroku Postgres) |
 
 ## Endpoint
 
@@ -47,3 +59,7 @@ Status: 201 dibuat, 400 validasi gagal, 401 kredensial/token salah, 409 email su
 - **Keamanan:** password di-hash bcrypt (tidak pernah dikembalikan di response); pesan error login sama untuk email/password salah; email unik dan dinormalisasi lowercase; JWT berisi `sub` (id user) dengan masa berlaku `JWT_EXPIRES_IN` (default 1 jam); query terparameter (anti SQL injection); body dibatasi 10kb.
 - **Konfigurasi** lewat environment variable; aplikasi gagal start jika `JWT_SECRET`/`DATABASE_URL` kosong.
 - **Pengembangan lanjutan (tidak dikerjakan):** rate limiting login, refresh token, verifikasi email, migrasi berversi (mis. knex), deploy ke Heroku/VPS.
+
+## Deploy (Render)
+
+`render.yaml` menyediakan Blueprint: web service + Render Postgres (free). Di Render pilih **New > Blueprint**, pilih repo ini, lalu Apply. `JWT_SECRET` dibuat otomatis, `DATABASE_URL` diisi dari database Render, dan migrasi jalan saat start. Dokumentasi: `https://<nama-app>.onrender.com/docs`.
