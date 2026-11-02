@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: widya-auth-api
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm run migrate && npm start
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: widya-auth-db
+          property: connectionString
+      - key: DATABASE_SSL
+        value: "true"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 1h
+databases:
+  - name: widya-auth-db
+    plan: free
